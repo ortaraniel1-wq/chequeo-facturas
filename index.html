@@ -163,11 +163,13 @@
       <button class="btn primary" id="btnFoto">Tomar foto</button>
       <button class="btn" id="btnArchivo">Elegir imagen</button>
     </div>
+    <button class="btn ghost" id="btnPdf">Cargar factura en PDF</button>
     <button class="btn ghost" id="btnTexto">Pegar el texto de la factura</button>
   </div>
 
   <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
   <input type="file" id="fileLib" accept="image/*" hidden>
+  <input type="file" id="filePdf" accept="application/pdf,.pdf" hidden>
 
   <div id="ocrBox" hidden>
     <div class="bar"><i id="ocrBar"></i></div>
@@ -345,6 +347,102 @@ $("btnFoto").onclick = ()=> $("fileCam").click();
 $("btnArchivo").onclick = ()=> $("fileLib").click();
 $("fileCam").onchange = e => { if(e.target.files[0]) leerImagen(e.target.files[0]); };
 $("fileLib").onchange = e => { if(e.target.files[0]) leerImagen(e.target.files[0]); };
+
+$("btnPdf").onclick = ()=> $("filePdf").click();
+$("filePdf").onchange = e => { if(e.target.files[0]) leerPDF(e.target.files[0]); };
+
+/* --- factura en PDF: primero el texto interno; si viene escaneada, OCR --- */
+const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+async function leerPDF(file){
+  $("ocrBox").hidden = false;
+  $("ocrBar").style.width = "5%";
+  $("ocrStatus").textContent = "Abriendo el PDF…";
+  try{
+    if(!window.pdfjsLib){
+      await cargarScript(PDFJS_URL);
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+    }
+    const buf = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+
+    let texto = "";
+    for(let p = 1; p <= pdf.numPages; p++){
+      $("ocrStatus").textContent = "Leyendo página " + p + " de " + pdf.numPages + "…";
+      $("ocrBar").style.width = (5 + (p/pdf.numPages)*55) + "%";
+      const pag = await pdf.getPage(p);
+      const tc = await pag.getTextContent();
+      texto += reconstruirLineas(tc.items) + "\n";
+    }
+
+    let filas = parsear(texto);
+
+    // PDF escaneado (sin texto interno): pasamos las páginas por OCR
+    if(!filas.length && texto.replace(/\s/g,"").length < 60){
+      $("ocrStatus").textContent = "El PDF no trae texto, se va a leer como imagen…";
+      texto = await ocrDelPDF(pdf);
+      filas = parsear(texto);
+    }
+
+    $("ocrBox").hidden = true;
+    if(!filas.length){
+      if(confirm("No pude separar los renglones del PDF. ¿Quieres revisar el texto que sí leí y corregirlo a mano?")){
+        $("pasteBox").hidden = false;
+        $("pasteArea").value = texto;
+        $("pasteArea").focus();
+      }
+      return;
+    }
+    rows = filas;
+    pintarTabla();
+  }catch(err){
+    $("ocrStatus").textContent = "No se pudo leer el PDF: " + err.message;
+    $("ocrBar").style.width = "0";
+  }
+}
+
+// pdf.js entrega pedacitos sueltos de texto con su posición; los agrupamos
+// por renglón (misma altura) para recuperar las líneas de la factura.
+function reconstruirLineas(items){
+  const lineas = [];
+  items.forEach(it=>{
+    if(!it.str || !it.str.trim()) return;
+    const y = Math.round(it.transform[5]);
+    const x = it.transform[4];
+    let l = lineas.find(o=>Math.abs(o.y - y) <= 3);
+    if(!l){ l = { y: y, piezas: [] }; lineas.push(l); }
+    l.piezas.push({ x: x, t: it.str });
+  });
+  return lineas
+    .sort((a,b)=>b.y - a.y)
+    .map(l => limpiar(l.piezas.sort((a,b)=>a.x - b.x).map(p=>p.t).join(" ")))
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function ocrDelPDF(pdf){
+  if(!window.Tesseract) await cargarScript("https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js");
+  let texto = "";
+  const tope = Math.min(pdf.numPages, 5);
+  for(let p = 1; p <= tope; p++){
+    const pag = await pdf.getPage(p);
+    const vp = pag.getViewport({ scale: 2 });
+    const c = document.createElement("canvas");
+    c.width = vp.width; c.height = vp.height;
+    await pag.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+    const res = await Tesseract.recognize(c, "spa", {
+      logger: m => {
+        if(m.status === "recognizing text"){
+          $("ocrBar").style.width = (60 + ((p-1+m.progress)/tope)*40) + "%";
+          $("ocrStatus").textContent = "Leyendo página " + p + " con OCR… " + Math.round(m.progress*100) + "%";
+        }
+      }
+    });
+    texto += res.data.text + "\n";
+  }
+  return texto;
+}
 
 $("btnTexto").onclick = ()=>{ $("pasteBox").hidden = false; $("pasteArea").focus(); };
 $("btnCancelPaste").onclick = ()=>{ $("pasteBox").hidden = true; };
