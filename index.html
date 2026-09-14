@@ -133,6 +133,7 @@
   .group h3{font-size:.9rem;margin:0 0 .4rem;font-weight:600}
   .group h3 em{font-style:normal;color:var(--dim);font-weight:400}
   .empty{color:var(--dim);font-size:.88rem;padding:.6rem 0}
+  .btn.grande{width:100%;font-size:1.3rem;font-weight:700;padding:1.1rem .8rem;margin-bottom:.2rem}
   dialog{background:var(--panel);color:var(--paper);border:1px solid var(--edge);border-radius:8px;max-width:92vw;width:420px}
   dialog::backdrop{background:rgba(0,0,0,.7)}
 </style>
@@ -266,6 +267,20 @@
       <button class="btn ghost" id="dlgSobrante">Marcar como novedad</button>
       <button class="btn ghost" id="dlgCerrar">Cancelar</button>
     </div>
+  </div>
+</dialog>
+
+<dialog id="dlgCantidad">
+  <div style="padding:1rem">
+    <h2 id="dlgcTitulo" style="margin-top:0;font-size:1.1rem;line-height:1.3">Producto</h2>
+    <p class="note" id="dlgcCode"></p>
+    <button class="btn go grande" id="dlgcCompleto">Llegó completo · <span id="dlgcQty">0</span></button>
+    <p class="note" style="margin:.9rem 0 .4rem">¿Llegó parcial? Escribe cuántos llegaron:</p>
+    <div class="row">
+      <input type="number" id="dlgcNum" min="0" inputmode="numeric" placeholder="0" style="font-size:1.6rem;text-align:center;font-family:var(--mono)">
+      <button class="btn" id="dlgcGuardar" style="flex:0 0 42%">Guardar</button>
+    </div>
+    <button class="btn ghost" id="dlgcCancelar" style="width:100%">Cancelar</button>
   </div>
 </dialog>
 
@@ -505,19 +520,49 @@ function escanear(codigo){
     señal("bad", "No está en la factura", c, "");
     beep("bad");
     abrirAsignar(c);
-  } else if(r.got >= r.qty){
-    r.got++;
-    señal("dup", "Sobrante", r.desc, r.got + " de " + r.qty);
-    beep("dup");
   } else {
-    r.got++;
-    const full = r.got >= r.qty;
-    señal("ok", full ? "Renglón completo" : "Va bien", r.desc, r.got + " de " + r.qty);
-    beep("ok");
+    abrirCantidad(r);
+    return;
   }
   pintarChequeo();
   guardarSesion();
 }
+
+/* --- cuánto llegó de este renglón --- */
+let filaPendiente = null;
+function abrirCantidad(r){
+  filaPendiente = r;
+  $("dlgcTitulo").textContent = r.desc || "(sin descripción)";
+  $("dlgcCode").textContent =
+    (r.code ? r.code + " · " : "") + "la factura dice " + r.qty +
+    (r.got ? " · ya tenías " + r.got : "");
+  $("dlgcQty").textContent = r.qty;
+  $("dlgcNum").value = "";
+  $("dlgCantidad").showModal();
+  setTimeout(()=>$("dlgcNum").focus(), 60);
+}
+function aplicarCantidad(n){
+  const r = filaPendiente;
+  $("dlgCantidad").close();
+  filaPendiente = null;
+  if(!r) return;
+  r.got = Math.max(0, n);
+  if(r.got > r.qty){ señal("dup", "Llegaron de más", r.desc, r.got + " de " + r.qty); beep("dup"); }
+  else if(r.got === r.qty){ señal("ok", "Renglón completo", r.desc, r.got + " de " + r.qty); beep("ok"); }
+  else { señal("dup", "Quedó incompleto", r.desc, r.got + " de " + r.qty); beep("dup"); }
+  pintarChequeo();
+  guardarSesion();
+}
+$("dlgcCompleto").onclick = ()=>{ if(filaPendiente) aplicarCantidad(filaPendiente.qty); };
+$("dlgcGuardar").onclick = ()=>{
+  const n = parseInt($("dlgcNum").value, 10);
+  if(isNaN(n)){ $("dlgcNum").focus(); return; }
+  aplicarCantidad(n);
+};
+$("dlgcNum").addEventListener("keydown", e=>{
+  if(e.key === "Enter"){ e.preventDefault(); $("dlgcGuardar").click(); }
+});
+$("dlgcCancelar").onclick = ()=>{ $("dlgCantidad").close(); filaPendiente = null; };
 
 function señal(clase, veredicto, que, cuenta){
   const s = $("signal");
@@ -548,13 +593,10 @@ function pintarChequeo(){
       li.innerHTML =
         '<div class="desc"><b>'+esc(r.desc||"(sin descripción)")+'</b><small>'+esc(r.code)+'</small></div>'+
         '<span class="n '+(r.got>r.qty?"over":r.got>=r.qty?"full":"")+'">'+r.got+'/'+r.qty+'</span>';
-      const mas = document.createElement("button");
-      mas.className = "btn sm"; mas.textContent = "+1";
-      mas.onclick = ()=>{ escanear(r.bar || r.code || ("#"+r.id)); };
-      const menos = document.createElement("button");
-      menos.className = "icon-btn"; menos.textContent = "−"; menos.title = "Quitar uno";
-      menos.onclick = ()=>{ r.got = Math.max(0, r.got-1); pintarChequeo(); guardarSesion(); };
-      li.appendChild(mas); li.appendChild(menos);
+      const contar = document.createElement("button");
+      contar.className = "btn sm"; contar.textContent = "Contar";
+      contar.onclick = ()=>{ abrirCantidad(r); };
+      li.appendChild(contar);
       ul.appendChild(li);
     });
   if(!ul.children.length) ul.innerHTML = '<li class="empty">Ningún renglón coincide con la búsqueda.</li>';
@@ -566,12 +608,7 @@ const escanearOrig = escanear;
 escanear = function(c){
   if(String(c).startsWith("#")){
     const r = rows.find(x=>x.id === parseInt(String(c).slice(1)));
-    if(r){
-      if(r.got >= r.qty){ r.got++; señal("dup","Sobrante",r.desc,r.got+" de "+r.qty); beep("dup"); }
-      else { r.got++; señal("ok", r.got>=r.qty?"Renglón completo":"Va bien", r.desc, r.got+" de "+r.qty); beep("ok"); }
-      pintarChequeo(); guardarSesion();
-      return;
-    }
+    if(r){ abrirCantidad(r); return; }
   }
   escanearOrig(c);
 };
@@ -579,7 +616,10 @@ escanear = function(c){
 /* --- lector láser de la PDA (escribe como teclado) --- */
 let buf = "", tBuf = 0;
 $("modoPda").onchange = e => { if(e.target.checked) enfocarWedge(); else $("wedge").blur(); };
-function enfocarWedge(){ if($("modoPda").checked && !$("s2").hidden) $("wedge").focus(); }
+function enfocarWedge(){
+  if(document.querySelector("dialog[open]")) return;
+  if($("modoPda").checked && !$("s2").hidden) $("wedge").focus();
+}
 document.addEventListener("click", ()=>{ if($("modoPda").checked) setTimeout(enfocarWedge, 30); });
 $("wedge").addEventListener("keydown", e=>{
   if(e.key === "Enter"){ e.preventDefault(); if(buf) escanear(buf); buf=""; $("wedge").value=""; return; }
