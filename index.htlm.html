@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B2127">
+<title>Chequeo de facturas — Armor Market</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  :root{
+    --ink:#1B2127;
+    --panel:#252D35;
+    --panel-2:#2E3840;
+    --edge:#3E4A55;
+    --paper:#EDEFF1;
+    --dim:#96A3AE;
+    --ok:#3FA34D;
+    --alert:#E8A317;
+    --stop:#D8452F;
+    --mono:"IBM Plex Mono",ui-monospace,"Roboto Mono","Courier New",monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--ink);color:var(--paper);font-family:var(--sans);
+    font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  button{font-family:inherit;font-size:1rem}
+  :focus-visible{outline:3px solid var(--alert);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+  header{
+    display:flex;align-items:center;justify-content:space-between;gap:.5rem;
+    padding:.7rem .9rem;background:var(--panel);border-bottom:1px solid var(--edge);
+    position:sticky;top:0;z-index:20;
+  }
+  header h1{margin:0;font-size:1rem;font-weight:600;letter-spacing:.01em}
+  header .doc{font-family:var(--mono);font-size:.78rem;color:var(--dim)}
+
+  nav{display:flex;background:var(--panel-2);border-bottom:1px solid var(--edge);position:sticky;top:49px;z-index:19}
+  nav button{
+    flex:1;background:none;border:0;color:var(--dim);padding:.65rem .3rem;
+    font-weight:500;border-bottom:3px solid transparent;cursor:pointer;
+  }
+  nav button[aria-current="true"]{color:var(--paper);border-bottom-color:var(--alert)}
+  nav button:disabled{opacity:.35}
+
+  main{padding:.9rem}
+  section[hidden]{display:none}
+  h2{font-size:1.05rem;margin:0 0 .3rem}
+  p.note{color:var(--dim);font-size:.88rem;margin:.2rem 0 1rem;max-width:60ch}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:.45rem;
+    background:var(--panel-2);color:var(--paper);border:1px solid var(--edge);
+    border-radius:6px;padding:.8rem 1rem;font-weight:600;cursor:pointer;width:100%;
+  }
+  .btn:active{background:var(--edge)}
+  .btn.primary{background:var(--alert);color:#20170A;border-color:var(--alert)}
+  .btn.go{background:var(--ok);color:#06210B;border-color:var(--ok)}
+  .btn.ghost{background:none}
+  .btn.sm{padding:.5rem .7rem;font-size:.85rem;width:auto}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .row{display:flex;gap:.55rem;margin-bottom:.55rem}
+  .row>*{flex:1}
+
+  .drop{
+    border:2px dashed var(--edge);border-radius:8px;padding:1.2rem;text-align:center;
+    color:var(--dim);margin-bottom:.9rem;
+  }
+  textarea,input[type=text],input[type=number],input[type=search]{
+    width:100%;background:var(--panel);color:var(--paper);border:1px solid var(--edge);
+    border-radius:6px;padding:.6rem;font-family:var(--mono);font-size:.95rem;
+  }
+  textarea{min-height:130px;line-height:1.35}
+
+  .bar{height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;margin:.7rem 0}
+  .bar i{display:block;height:100%;background:var(--alert);width:0;transition:width .2s}
+  .status{font-family:var(--mono);font-size:.82rem;color:var(--dim);min-height:1.2em}
+
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{text-align:left;color:var(--dim);font-weight:500;font-size:.75rem;padding:.35rem .3rem;border-bottom:1px solid var(--edge)}
+  td{padding:.3rem;border-bottom:1px solid var(--panel-2);vertical-align:top}
+  td input{padding:.35rem;font-size:.82rem}
+  td.qty{width:64px}
+  td.code{width:96px}
+  td.del{width:34px}
+  .icon-btn{background:none;border:0;color:var(--dim);font-size:1.1rem;cursor:pointer;padding:.2rem .35rem}
+
+  /* ---- pantalla de chequeo ---- */
+  .signal{
+    border-radius:8px;padding:1rem;margin-bottom:.8rem;background:var(--panel);
+    border-left:6px solid var(--edge);min-height:104px;
+  }
+  .signal.ok{background:#1E3A23;border-left-color:var(--ok)}
+  .signal.dup{background:#3B3117;border-left-color:var(--alert)}
+  .signal.bad{background:#3B1E18;border-left-color:var(--stop)}
+  .signal .verdict{font-size:1.25rem;font-weight:700;margin:0 0 .15rem}
+  .signal .what{font-size:.92rem;margin:0;color:#DDE3E8}
+  .signal .count{font-family:var(--mono);font-size:1.6rem;font-weight:600;margin-top:.3rem}
+
+  .tally{display:flex;gap:.5rem;margin-bottom:.8rem}
+  .tally div{flex:1;background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:.5rem;text-align:center}
+  .tally b{display:block;font-family:var(--mono);font-size:1.3rem;line-height:1.1}
+  .tally span{font-size:.7rem;color:var(--dim)}
+
+  .toggle{display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--dim);margin:.2rem 0 .8rem}
+  .toggle input{width:1.15rem;height:1.15rem;accent-color:var(--alert)}
+
+  #wedge{position:absolute;left:-9999px;opacity:0;height:1px;width:1px}
+
+  ul.items{list-style:none;padding:0;margin:.5rem 0 0}
+  ul.items li{
+    display:flex;align-items:center;gap:.6rem;padding:.55rem .6rem;border:1px solid var(--edge);
+    border-radius:6px;margin-bottom:.4rem;background:var(--panel);
+  }
+  ul.items li.done{opacity:.5;border-color:var(--ok)}
+  ul.items li.over{border-color:var(--alert)}
+  ul.items .desc{flex:1;min-width:0}
+  ul.items .desc b{display:block;font-weight:500;font-size:.9rem;overflow-wrap:anywhere}
+  ul.items .desc small{color:var(--dim);font-family:var(--mono);font-size:.74rem}
+  ul.items .n{font-family:var(--mono);font-weight:600;white-space:nowrap}
+  ul.items .n.full{color:var(--ok)}
+  ul.items .n.over{color:var(--alert)}
+
+  #cam{width:100%;border-radius:8px;background:#000;display:block}
+  .camwrap{margin-bottom:.8rem}
+
+  .lead{font-size:1.4rem;font-family:var(--mono);font-weight:600}
+  .group{margin-bottom:1.4rem}
+  .group h3{font-size:.9rem;margin:0 0 .4rem;font-weight:600}
+  .group h3 em{font-style:normal;color:var(--dim);font-weight:400}
+  .empty{color:var(--dim);font-size:.88rem;padding:.6rem 0}
+  dialog{background:var(--panel);color:var(--paper);border:1px solid var(--edge);border-radius:8px;max-width:92vw;width:420px}
+  dialog::backdrop{background:rgba(0,0,0,.7)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Chequeo de facturas</h1>
+  <span class="doc" id="docLabel">sin factura</span>
+</header>
+
+<nav>
+  <button id="tab1" aria-current="true">1 · Cargar</button>
+  <button id="tab2" disabled>2 · Chequear</button>
+  <button id="tab3" disabled>3 · Resumen</button>
+</nav>
+
+<main>
+
+<!-- ============ 1. CARGAR ============ -->
+<section id="s1">
+  <h2>Cargar la factura</h2>
+  <p class="note">Tómale foto a la factura impresa y la app lee los renglones. Si la lectura sale mal, corriges la tabla a mano antes de empezar.</p>
+
+  <div class="drop">
+    <div class="row">
+      <button class="btn primary" id="btnFoto">Tomar foto</button>
+      <button class="btn" id="btnArchivo">Elegir imagen</button>
+    </div>
+    <button class="btn ghost" id="btnTexto">Pegar el texto de la factura</button>
+  </div>
+
+  <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+  <input type="file" id="fileLib" accept="image/*" hidden>
+
+  <div id="ocrBox" hidden>
+    <div class="bar"><i id="ocrBar"></i></div>
+    <div class="status" id="ocrStatus"></div>
+  </div>
+
+  <div id="pasteBox" hidden>
+    <textarea id="pasteArea" placeholder="Pega aquí los renglones: código, descripción y cantidad"></textarea>
+    <div class="row" style="margin-top:.55rem">
+      <button class="btn go" id="btnParsePaste">Leer renglones</button>
+      <button class="btn ghost" id="btnCancelPaste">Cancelar</button>
+    </div>
+  </div>
+
+  <div id="tableBox" hidden>
+    <div class="row" style="align-items:center;margin-bottom:.3rem">
+      <label style="flex:2">
+        <input type="text" id="docNum" placeholder="N° de factura o nota" style="font-family:var(--sans)">
+      </label>
+      <button class="btn sm ghost" id="btnAddRow" style="flex:0 0 auto">+ Renglón</button>
+    </div>
+    <p class="note" id="rowCount"></p>
+    <table>
+      <thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th></th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="row" style="margin-top:.9rem">
+      <button class="btn go" id="btnEmpezar">Empezar chequeo</button>
+    </div>
+    <button class="btn ghost sm" id="btnBorrarTodo" style="margin-top:.5rem;width:100%">Descartar y cargar otra factura</button>
+  </div>
+</section>
+
+<!-- ============ 2. CHEQUEAR ============ -->
+<section id="s2" hidden>
+  <div class="signal" id="signal">
+    <p class="verdict" id="sigVerdict">Listo para escanear</p>
+    <p class="what" id="sigWhat">Dispara el lector o busca el producto por descripción.</p>
+    <div class="count" id="sigCount"></div>
+  </div>
+
+  <div class="tally">
+    <div><b id="tOk">0</b><span>completos</span></div>
+    <div><b id="tFalta">0</b><span>faltan</span></div>
+    <div><b id="tNovedad">0</b><span>novedades</span></div>
+  </div>
+
+  <label class="toggle">
+    <input type="checkbox" id="modoPda">
+    Modo PDA — el lector láser escribe directo, sin teclado en pantalla
+  </label>
+  <input id="wedge" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+
+  <div class="row">
+    <button class="btn" id="btnCam">Escanear con la cámara</button>
+  </div>
+  <div class="camwrap" id="camWrap" hidden>
+    <video id="cam" playsinline muted></video>
+    <button class="btn ghost sm" id="btnCamStop" style="width:100%;margin-top:.4rem">Cerrar cámara</button>
+  </div>
+
+  <input type="search" id="buscar" placeholder="Buscar por descripción o código" style="font-family:var(--sans)">
+  <ul class="items" id="lista"></ul>
+
+  <div class="row" style="margin-top:1rem">
+    <button class="btn primary" id="btnCerrar">Cerrar chequeo</button>
+  </div>
+</section>
+
+<!-- ============ 3. RESUMEN ============ -->
+<section id="s3" hidden>
+  <h2 id="resTitulo">Resumen</h2>
+  <p class="note" id="resNota"></p>
+
+  <div class="group" id="gFalta"></div>
+  <div class="group" id="gSobra"></div>
+  <div class="group" id="gDesconocido"></div>
+  <div class="group" id="gOk"></div>
+
+  <div class="row">
+    <button class="btn" id="btnCopiar">Copiar resumen</button>
+    <button class="btn" id="btnCsv">Descargar CSV</button>
+  </div>
+  <button class="btn ghost" id="btnVolver" style="margin-top:.5rem">Volver al chequeo</button>
+  <button class="btn ghost" id="btnNueva" style="margin-top:.5rem">Nueva factura</button>
+</section>
+
+</main>
+
+<dialog id="dlgAsignar">
+  <div style="padding:1rem">
+    <h2 style="margin-top:0">Código no está en la factura</h2>
+    <p class="note" id="dlgCode"></p>
+    <input type="search" id="dlgBuscar" placeholder="Buscar el renglón al que pertenece" style="font-family:var(--sans)">
+    <ul class="items" id="dlgLista" style="max-height:40vh;overflow:auto"></ul>
+    <div class="row">
+      <button class="btn ghost" id="dlgSobrante">Marcar como novedad</button>
+      <button class="btn ghost" id="dlgCerrar">Cancelar</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+/* ---------- estado ---------- */
+let doc = "";
+let rows = [];          // {id, code, bar, desc, qty, got}
+let unknown = {};       // codigo -> veces
+let aliases = load("alias_codigos", {});   // codigo escaneado -> id de renglón (por código de factura)
+let uid = 1;
+
+function load(k, def){ try{ return JSON.parse(localStorage.getItem(k)) ?? def; }catch(e){ return def; } }
+function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function guardarSesion(){ save("sesion", {doc, rows, unknown, uid}); }
+function $(id){ return document.getElementById(id); }
+
+/* ---------- utilidades ---------- */
+const norm = s => String(s||"").trim().toUpperCase().replace(/[\s\-_.]/g,"");
+const limpiar = s => String(s||"").replace(/\s+/g," ").trim();
+
+function numVe(t){
+  if(!t) return null;
+  let s = String(t).replace(/[^\d.,]/g,"");
+  if(!s) return null;
+  if(s.includes(",")) s = s.replace(/\./g,"").replace(",",".");
+  else if((s.match(/\./g)||[]).length > 1) s = s.replace(/\./g,"");
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function beep(tipo){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AC();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = tipo==="ok" ? 880 : tipo==="dup" ? 620 : 220;
+    o.type = "square";
+    g.gain.setValueAtTime(.06, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + (tipo==="bad"?.35:.12));
+    o.start(); o.stop(ctx.currentTime + (tipo==="bad"?.35:.12));
+    setTimeout(()=>ctx.close(), 600);
+  }catch(e){}
+  if(navigator.vibrate) navigator.vibrate(tipo==="ok"?40:tipo==="dup"?[30,40,30]:[80,60,80]);
+}
+
+/* ---------- navegación ---------- */
+function ir(n){
+  [1,2,3].forEach(i=>{ $("s"+i).hidden = (i!==n); $("tab"+i).setAttribute("aria-current", i===n); });
+  window.scrollTo(0,0);
+  if(n===2) setTimeout(enfocarWedge, 100);
+  if(n===3) pintarResumen();
+}
+$("tab1").onclick = ()=>ir(1);
+$("tab2").onclick = ()=>{ if(rows.length) ir(2); };
+$("tab3").onclick = ()=>{ if(rows.length) ir(3); };
+
+/* ---------- 1. entrada de la factura ---------- */
+$("btnFoto").onclick = ()=> $("fileCam").click();
+$("btnArchivo").onclick = ()=> $("fileLib").click();
+$("fileCam").onchange = e => { if(e.target.files[0]) leerImagen(e.target.files[0]); };
+$("fileLib").onchange = e => { if(e.target.files[0]) leerImagen(e.target.files[0]); };
+
+$("btnTexto").onclick = ()=>{ $("pasteBox").hidden = false; $("pasteArea").focus(); };
+$("btnCancelPaste").onclick = ()=>{ $("pasteBox").hidden = true; };
+$("btnParsePaste").onclick = ()=>{
+  const r = parsear($("pasteArea").value);
+  if(!r.length){ alert("No se reconoció ningún renglón. Revisa que cada línea tenga código, descripción y cantidad."); return; }
+  rows = r; $("pasteBox").hidden = true; pintarTabla();
+};
+
+async function leerImagen(file){
+  $("ocrBox").hidden = false;
+  $("ocrStatus").textContent = "Preparando el lector…";
+  $("ocrBar").style.width = "5%";
+  try{
+    if(!window.Tesseract) await cargarScript("https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js");
+    const img = await prepararImagen(file);
+    const res = await Tesseract.recognize(img, "spa", {
+      logger: m => {
+        if(m.status === "recognizing text"){
+          $("ocrBar").style.width = (10 + m.progress*90) + "%";
+          $("ocrStatus").textContent = "Leyendo la factura… " + Math.round(m.progress*100) + "%";
+        } else {
+          $("ocrStatus").textContent = m.status;
+        }
+      },
+      tessedit_char_whitelist: "ABCDEFGHIJKLMNÑOPQRSTUVWXYZabcdefghijklmnñopqrstuvwxyz0123456789.,-/ "
+    });
+    const r = parsear(res.data.text);
+    $("ocrBox").hidden = true;
+    if(!r.length){
+      alert("No se pudo separar los renglones de la foto. Prueba con más luz y la factura plana, o pega el texto.");
+      return;
+    }
+    rows = r;
+    pintarTabla();
+  }catch(err){
+    $("ocrStatus").textContent = "No se pudo leer la imagen: " + err.message;
+    $("ocrBar").style.width = "0";
+  }
+}
+
+function cargarScript(src){
+  return new Promise((ok,fail)=>{
+    const s = document.createElement("script");
+    s.src = src; s.onload = ok; s.onerror = ()=>fail(new Error("sin conexión para cargar el lector"));
+    document.head.appendChild(s);
+  });
+}
+
+// Reduce y sube el contraste: el OCR trabaja mejor y el teléfono no se ahoga.
+function prepararImagen(file){
+  return new Promise(res=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const max = 1800;
+      const esc = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width*esc); c.height = Math.round(img.height*esc);
+      const x = c.getContext("2d");
+      x.drawImage(img, 0, 0, c.width, c.height);
+      const d = x.getImageData(0,0,c.width,c.height), p = d.data;
+      for(let i=0;i<p.length;i+=4){
+        const g = p[i]*.3 + p[i+1]*.59 + p[i+2]*.11;
+        const v = g > 150 ? 255 : g < 105 ? 0 : (g-105)*255/45;
+        p[i]=p[i+1]=p[i+2]=v;
+      }
+      x.putImageData(d,0,0);
+      res(c);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/* Parser de renglones.
+   Espera algo así:  A0012  ARROZ PRIMOR 1KG  12,00  1.500,00  18.000,00
+   Toma el primer token como código, el último bloque de números como precios
+   y la primera cifra de ese bloque como la cantidad.                       */
+function parsear(texto){
+  const out = [];
+  String(texto).split(/\r?\n/).forEach(linea=>{
+    let l = limpiar(linea);
+    if(l.length < 8) return;
+    if(/^(sub\s*total|total|iva|base|exento|descuento|monto|cliente|rif|fecha|factura|nota|pagina|p[aá]g)/i.test(l)) return;
+
+    const tk = l.split(" ");
+    if(tk.length < 3) return;
+
+    // código: primer token con al menos un dígito
+    let code = "", i = 0;
+    if(/\d/.test(tk[0]) && tk[0].length >= 3){ code = tk[0]; i = 1; }
+    else if(/^\d+$/.test(tk[0]) && tk[1] && /\d/.test(tk[1])){ code = tk[1]; i = 2; }
+    else return;
+
+    // números al final
+    const nums = [];
+    let j = tk.length - 1;
+    while(j > i && /^[\d.,]+$/.test(tk[j]) && /\d/.test(tk[j])){ nums.unshift(tk[j]); j--; }
+    if(!nums.length) return;
+
+    const desc = limpiar(tk.slice(i, j+1).join(" "));
+    if(desc.length < 3) return;
+
+    const qty = Math.max(1, Math.round(numVe(nums[0]) || 1));
+    out.push({ id: uid++, code: code, bar: "", desc: desc, qty: qty, got: 0 });
+  });
+  return out;
+}
+
+/* ---------- tabla editable ---------- */
+function pintarTabla(){
+  $("tableBox").hidden = false;
+  const tb = $("tbody");
+  tb.innerHTML = "";
+  rows.forEach(r=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="code"><input type="text" value="'+esc(r.code)+'" data-f="code"></td>'+
+      '<td><input type="text" value="'+esc(r.desc)+'" data-f="desc"></td>'+
+      '<td class="qty"><input type="number" min="1" value="'+r.qty+'" data-f="qty"></td>'+
+      '<td class="del"><button class="icon-btn" title="Quitar renglón">✕</button></td>';
+    tr.querySelectorAll("input").forEach(inp=>{
+      inp.oninput = ()=>{
+        const f = inp.dataset.f;
+        r[f] = f==="qty" ? Math.max(1, parseInt(inp.value)||1) : inp.value;
+        guardarSesion();
+      };
+    });
+    tr.querySelector("button").onclick = ()=>{
+      rows = rows.filter(x=>x.id!==r.id);
+      pintarTabla(); guardarSesion();
+    };
+    tb.appendChild(tr);
+  });
+  const piezas = rows.reduce((a,r)=>a+r.qty,0);
+  $("rowCount").textContent = rows.length + " renglones · " + piezas + " piezas";
+  $("tab2").disabled = rows.length === 0;
+  $("tab3").disabled = rows.length === 0;
+  guardarSesion();
+}
+function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+
+$("btnAddRow").onclick = ()=>{ rows.push({id:uid++,code:"",bar:"",desc:"",qty:1,got:0}); pintarTabla(); };
+$("btnBorrarTodo").onclick = ()=>{
+  if(!confirm("¿Descartar esta factura y empezar de cero?")) return;
+  rows = []; unknown = {}; doc = "";
+  $("tableBox").hidden = true; $("pasteArea").value = "";
+  $("tab2").disabled = $("tab3").disabled = true;
+  guardarSesion();
+};
+$("docNum").oninput = e => { doc = e.target.value; $("docLabel").textContent = doc || "sin factura"; guardarSesion(); };
+$("btnEmpezar").onclick = ()=>{ rows.forEach(r=>r.got=0); unknown={}; ir(2); pintarChequeo(); };
+
+/* ---------- 2. chequeo ---------- */
+function buscarPorCodigo(c){
+  const n = norm(c);
+  if(!n) return null;
+  let r = rows.find(x=>norm(x.bar)===n) || rows.find(x=>norm(x.code)===n);
+  if(r) return r;
+  const id = aliases[n];
+  if(id != null){
+    r = rows.find(x=>norm(x.code)===norm(id));
+    if(r) return r;
+  }
+  return null;
+}
+
+function escanear(codigo){
+  const c = limpiar(codigo);
+  if(!c) return;
+  const r = buscarPorCodigo(c);
+  if(!r){
+    unknown[c] = (unknown[c]||0) + 1;
+    señal("bad", "No está en la factura", c, "");
+    beep("bad");
+    abrirAsignar(c);
+  } else if(r.got >= r.qty){
+    r.got++;
+    señal("dup", "Sobrante", r.desc, r.got + " de " + r.qty);
+    beep("dup");
+  } else {
+    r.got++;
+    const full = r.got >= r.qty;
+    señal("ok", full ? "Renglón completo" : "Va bien", r.desc, r.got + " de " + r.qty);
+    beep("ok");
+  }
+  pintarChequeo();
+  guardarSesion();
+}
+
+function señal(clase, veredicto, que, cuenta){
+  const s = $("signal");
+  s.className = "signal " + clase;
+  $("sigVerdict").textContent = veredicto;
+  $("sigWhat").textContent = que;
+  $("sigCount").textContent = cuenta;
+}
+
+function pintarChequeo(){
+  const ok = rows.filter(r=>r.got >= r.qty && r.got === r.qty).length;
+  const falta = rows.reduce((a,r)=>a + Math.max(0, r.qty - r.got), 0);
+  const nov = rows.filter(r=>r.got > r.qty).length + Object.keys(unknown).length;
+  $("tOk").textContent = ok;
+  $("tFalta").textContent = falta;
+  $("tNovedad").textContent = nov;
+
+  const q = norm($("buscar").value);
+  const ul = $("lista");
+  ul.innerHTML = "";
+  rows
+    .filter(r=>!q || norm(r.desc).includes(q) || norm(r.code).includes(q))
+    .sort((a,b)=>(a.got>=a.qty) - (b.got>=b.qty))
+    .forEach(r=>{
+      const li = document.createElement("li");
+      if(r.got > r.qty) li.className = "over";
+      else if(r.got >= r.qty) li.className = "done";
+      li.innerHTML =
+        '<div class="desc"><b>'+esc(r.desc||"(sin descripción)")+'</b><small>'+esc(r.code)+'</small></div>'+
+        '<span class="n '+(r.got>r.qty?"over":r.got>=r.qty?"full":"")+'">'+r.got+'/'+r.qty+'</span>';
+      const mas = document.createElement("button");
+      mas.className = "btn sm"; mas.textContent = "+1";
+      mas.onclick = ()=>{ escanear(r.bar || r.code || ("#"+r.id)); };
+      const menos = document.createElement("button");
+      menos.className = "icon-btn"; menos.textContent = "−"; menos.title = "Quitar uno";
+      menos.onclick = ()=>{ r.got = Math.max(0, r.got-1); pintarChequeo(); guardarSesion(); };
+      li.appendChild(mas); li.appendChild(menos);
+      ul.appendChild(li);
+    });
+  if(!ul.children.length) ul.innerHTML = '<li class="empty">Ningún renglón coincide con la búsqueda.</li>';
+}
+$("buscar").oninput = pintarChequeo;
+
+// Los renglones sin código de barra se cuentan con un id interno
+const escanearOrig = escanear;
+escanear = function(c){
+  if(String(c).startsWith("#")){
+    const r = rows.find(x=>x.id === parseInt(String(c).slice(1)));
+    if(r){
+      if(r.got >= r.qty){ r.got++; señal("dup","Sobrante",r.desc,r.got+" de "+r.qty); beep("dup"); }
+      else { r.got++; señal("ok", r.got>=r.qty?"Renglón completo":"Va bien", r.desc, r.got+" de "+r.qty); beep("ok"); }
+      pintarChequeo(); guardarSesion();
+      return;
+    }
+  }
+  escanearOrig(c);
+};
+
+/* --- lector láser de la PDA (escribe como teclado) --- */
+let buf = "", tBuf = 0;
+$("modoPda").onchange = e => { if(e.target.checked) enfocarWedge(); else $("wedge").blur(); };
+function enfocarWedge(){ if($("modoPda").checked && !$("s2").hidden) $("wedge").focus(); }
+document.addEventListener("click", ()=>{ if($("modoPda").checked) setTimeout(enfocarWedge, 30); });
+$("wedge").addEventListener("keydown", e=>{
+  if(e.key === "Enter"){ e.preventDefault(); if(buf) escanear(buf); buf=""; $("wedge").value=""; return; }
+  if(e.key.length === 1){
+    const ahora = Date.now();
+    if(ahora - tBuf > 400) buf = "";
+    tBuf = ahora; buf += e.key;
+  }
+});
+$("wedge").addEventListener("blur", ()=> setTimeout(enfocarWedge, 120));
+
+/* --- cámara --- */
+let stream = null, lazo = null;
+$("btnCam").onclick = abrirCamara;
+$("btnCamStop").onclick = cerrarCamara;
+
+async function abrirCamara(){
+  if(!("BarcodeDetector" in window)){
+    alert("Este navegador no lee códigos con la cámara. Usa el lector de la PDA o busca el producto en la lista.");
+    return;
+  }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" } });
+    $("cam").srcObject = stream;
+    await $("cam").play();
+    $("camWrap").hidden = false;
+    const det = new BarcodeDetector({ formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf","codabar"] });
+    let ultimo = "", tUlt = 0;
+    lazo = setInterval(async ()=>{
+      try{
+        const cods = await det.detect($("cam"));
+        if(cods.length){
+          const v = cods[0].rawValue, ahora = Date.now();
+          if(v !== ultimo || ahora - tUlt > 1500){ ultimo = v; tUlt = ahora; escanear(v); }
+        }
+      }catch(e){}
+    }, 300);
+  }catch(e){
+    alert("No se pudo abrir la cámara: " + e.message);
+  }
+}
+function cerrarCamara(){
+  if(lazo) clearInterval(lazo), lazo = null;
+  if(stream) stream.getTracks().forEach(t=>t.stop()), stream = null;
+  $("camWrap").hidden = true;
+}
+
+/* --- asignar un código desconocido a un renglón --- */
+let codigoPendiente = "";
+function abrirAsignar(c){
+  codigoPendiente = c;
+  $("dlgCode").textContent = "Escaneaste " + c + ". Si pertenece a un renglón de la factura, selecciónalo y la app lo recordará para la próxima.";
+  $("dlgBuscar").value = "";
+  pintarDlg();
+  $("dlgAsignar").showModal();
+}
+function pintarDlg(){
+  const q = norm($("dlgBuscar").value);
+  const ul = $("dlgLista");
+  ul.innerHTML = "";
+  rows.filter(r=>!q || norm(r.desc).includes(q) || norm(r.code).includes(q)).slice(0,40).forEach(r=>{
+    const li = document.createElement("li");
+    li.innerHTML = '<div class="desc"><b>'+esc(r.desc)+'</b><small>'+esc(r.code)+' · '+r.got+'/'+r.qty+'</small></div>';
+    li.style.cursor = "pointer";
+    li.onclick = ()=>{
+      aliases[norm(codigoPendiente)] = r.code || ("#"+r.id);
+      if(!r.bar) r.bar = codigoPendiente;
+      save("alias_codigos", aliases);
+      delete unknown[codigoPendiente];
+      $("dlgAsignar").close();
+      escanear(codigoPendiente);
+    };
+    ul.appendChild(li);
+  });
+  if(!ul.children.length) ul.innerHTML = '<li class="empty">Sin coincidencias.</li>';
+}
+$("dlgBuscar").oninput = pintarDlg;
+$("dlgSobrante").onclick = ()=> $("dlgAsignar").close();
+$("dlgCerrar").onclick = ()=>{ delete unknown[codigoPendiente]; pintarChequeo(); $("dlgAsignar").close(); };
+
+$("btnCerrar").onclick = ()=>{ cerrarCamara(); ir(3); };
+
+/* ---------- 3. resumen ---------- */
+function pintarResumen(){
+  const falta  = rows.filter(r=>r.got < r.qty);
+  const sobra  = rows.filter(r=>r.got > r.qty);
+  const okList = rows.filter(r=>r.got === r.qty);
+  const desc   = Object.keys(unknown);
+
+  const limpio = !falta.length && !sobra.length && !desc.length;
+  $("resTitulo").textContent = limpio ? "Factura conforme" : "Factura con novedades";
+  $("resNota").textContent = limpio
+    ? "Los " + rows.length + " renglones llegaron completos. " + (doc ? "Factura " + doc + "." : "")
+    : "Revisa lo que está abajo antes de firmar. " + (doc ? "Factura " + doc + "." : "");
+
+  grupo("gFalta",  "Faltantes", falta,  r => (r.qty - r.got) + " de menos");
+  grupo("gSobra",  "Sobrantes", sobra,  r => (r.got - r.qty) + " de más");
+  grupo("gDesconocido", "Códigos que no están en la factura",
+        desc.map(c=>({code:c, desc:"Código sin renglón", _n:unknown[c]})), r => r._n + " lectura(s)");
+  grupo("gOk",     "Completos", okList, r => r.qty + " piezas");
+}
+function grupo(id, titulo, lista, detalle){
+  const g = $(id);
+  if(!lista.length){ g.innerHTML = ""; return; }
+  let h = '<h3>'+titulo+' <em>· '+lista.length+'</em></h3><ul class="items">';
+  lista.forEach(r=>{
+    h += '<li><div class="desc"><b>'+esc(r.desc)+'</b><small>'+esc(r.code)+'</small></div><span class="n">'+esc(detalle(r))+'</span></li>';
+  });
+  g.innerHTML = h + '</ul>';
+}
+
+function textoResumen(){
+  const f = new Date().toLocaleString("es-VE");
+  let t = "CHEQUEO DE FACTURA" + (doc ? " " + doc : "") + "\n" + f + "\n\n";
+  const falta = rows.filter(r=>r.got < r.qty), sobra = rows.filter(r=>r.got > r.qty);
+  const desc = Object.keys(unknown);
+  if(falta.length){ t += "FALTANTES\n"; falta.forEach(r=>t += "- " + r.code + " " + r.desc + ": llegaron " + r.got + " de " + r.qty + "\n"); t += "\n"; }
+  if(sobra.length){ t += "SOBRANTES\n"; sobra.forEach(r=>t += "- " + r.code + " " + r.desc + ": llegaron " + r.got + " de " + r.qty + "\n"); t += "\n"; }
+  if(desc.length){ t += "CÓDIGOS FUERA DE FACTURA\n"; desc.forEach(c=>t += "- " + c + " (" + unknown[c] + ")\n"); t += "\n"; }
+  if(!falta.length && !sobra.length && !desc.length) t += "Todo conforme: " + rows.length + " renglones completos.\n";
+  return t;
+}
+$("btnCopiar").onclick = async ()=>{
+  const t = textoResumen();
+  try{ await navigator.clipboard.writeText(t); $("btnCopiar").textContent = "Copiado"; setTimeout(()=>$("btnCopiar").textContent="Copiar resumen",1500); }
+  catch(e){ prompt("Copia el resumen:", t); }
+};
+$("btnCsv").onclick = ()=>{
+  let csv = "codigo;descripcion;facturado;recibido;diferencia\n";
+  rows.forEach(r=>{ csv += [r.code, '"'+String(r.desc).replace(/"/g,"'")+'"', r.qty, r.got, r.got-r.qty].join(";") + "\n"; });
+  Object.keys(unknown).forEach(c=>{ csv += [c, '"FUERA DE FACTURA"', 0, unknown[c], unknown[c]].join(";") + "\n"; });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff"+csv], {type:"text/csv"}));
+  a.download = "chequeo_" + (doc || "factura").replace(/\W+/g,"_") + ".csv";
+  a.click();
+};
+$("btnVolver").onclick = ()=>ir(2);
+$("btnNueva").onclick = ()=>{
+  if(!confirm("¿Cerrar esta factura y empezar otra?")) return;
+  rows = []; unknown = {}; doc = ""; $("docNum").value = ""; $("docLabel").textContent = "sin factura";
+  $("tableBox").hidden = true; $("pasteArea").value = "";
+  $("tab2").disabled = $("tab3").disabled = true;
+  guardarSesion(); ir(1);
+};
+
+/* ---------- retomar sesión ---------- */
+(function(){
+  const s = load("sesion", null);
+  if(s && s.rows && s.rows.length){
+    doc = s.doc || ""; rows = s.rows; unknown = s.unknown || {}; uid = s.uid || (rows.length+1);
+    $("docNum").value = doc; $("docLabel").textContent = doc || "sin factura";
+    pintarTabla(); pintarChequeo();
+    const hechos = rows.reduce((a,r)=>a+r.got,0);
+    if(hechos > 0) ir(2);
+  }
+})();
+</script>
+</body>
+</html>
