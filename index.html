@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#1B2127">
 <title>Chequeo de facturas — Armor Market</title>
 <link rel="manifest" href="manifest.json">
+<meta name="robots" content="noindex,nofollow">
+<script src="../faltantes-config.js" onerror="void 0"></script>
 <style>
   :root{
     --ink:#1B2127;
@@ -29,6 +31,16 @@
   }
   button{font-family:inherit;font-size:1rem}
   :focus-visible{outline:3px solid var(--alert);outline-offset:2px}
+
+  /* clave de acceso (solo cuando la app está publicada en la web) */
+  body.chq-bloqueado header, body.chq-bloqueado nav, body.chq-bloqueado main{display:none}
+  #chqLogin{max-width:420px;margin:10vh auto 0;padding:1.2rem}
+  #chqLogin[hidden]{display:none}
+  #chqLogin h2{margin:0 0 .2rem;font-size:1.3rem}
+  .chq-sedes{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin:.9rem 0}
+  .chq-sedes button{padding:.8rem .4rem;background:var(--panel-2);color:var(--paper);border:1px solid var(--edge);border-radius:6px}
+  .chq-sedes button.on{background:var(--alert);color:#1B2127;border-color:var(--alert);font-weight:700}
+  #chqErr{color:#ff8a78;min-height:1.4em;font-size:.9rem;margin-top:.5rem}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
   header{
@@ -140,9 +152,26 @@
 </head>
 <body>
 
+<div id="chqLogin" hidden><form id="chqForm">
+  <h2>Chequeo de facturas</h2>
+  <p class="note">Elige tu sede y escribe tu PIN.</p>
+  <div class="chq-sedes" id="chqSedes">
+    <button type="button" data-s="BOLEITA">Boleíta</button>
+    <button type="button" data-s="CHAG">Chaguaramos</button>
+    <button type="button" data-s="GUAIRA">La Guaira</button>
+    <button type="button" data-s="ADMIN">Administración</button>
+  </div>
+  <input type="text" id="chqNom" placeholder="Tu nombre" maxlength="40" autocomplete="name" style="font-family:var(--sans)">
+  <input type="password" id="chqPin" placeholder="PIN" inputmode="numeric" maxlength="8" autocomplete="off" style="font-family:var(--mono);letter-spacing:.4rem;text-align:center">
+  <button class="btn go grande" type="submit" id="chqEntrar" style="margin-top:.6rem">Entrar</button>
+  <div id="chqErr"></div>
+</form></div>
+<script>if(window.SEDES_API) document.body.classList.add("chq-bloqueado");</script>
+
 <header>
   <h1>Chequeo de facturas</h1>
   <span class="doc" id="docLabel">sin factura</span>
+  <button class="icon-btn" id="chqSalir" hidden style="font-size:.8rem"></button>
 </header>
 
 <nav>
@@ -176,7 +205,7 @@
     <input type="file" id="fileCat" accept=".csv,.txt,text/csv,text/plain" hidden>
   </details>
 
-  <details style="margin:.9rem 0">
+  <details id="profitBloque" style="margin:.9rem 0">
     <summary class="note">Buscar por número en Profit (requiere la conexión al servidor)</summary>
     <div class="drop">
       <input type="text" id="profitNum" inputmode="numeric" autocomplete="off" placeholder="N° de factura (ej. 40165747)" style="font-family:var(--mono);font-size:1.2rem">
@@ -340,6 +369,60 @@ function load(k, def){ try{ return JSON.parse(localStorage.getItem(k)) ?? def; }
 function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function guardarSesion(){ save("sesion", {doc, rows, unknown, uid}); }
 function $(id){ return document.getElementById(id); }
+
+/* ---------- clave de acceso: solo en la versión publicada en la web ----------
+   Reutiliza el login de "Pedidos entre sedes" (Apps Script, acción 'entrar'): sede + nombre + PIN. */
+(function(){
+  const API = window.SEDES_API;
+  if(!API) return;                       // en el servidor local no hay Apps Script: sin clave
+  const NOMBRE = {BOLEITA:"Boleíta", CHAG:"Chaguaramos", GUAIRA:"La Guaira", ADMIN:"Administración"};
+  let sel = "";
+  const llamar = s => fetch(API, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body: JSON.stringify({ accion:"entrar", sede:s.sede, pin:s.pin, por:s.por }) }).then(r => r.json());
+
+  function abrir(s){
+    document.body.classList.remove("chq-bloqueado");
+    $("chqLogin").hidden = true;
+    $("chqSalir").hidden = false;
+    $("chqSalir").textContent = "Salir · " + (NOMBRE[s.sede] || s.sede);
+    $("profitBloque").hidden = true;     // la búsqueda en Profit solo existe en el servidor de la tienda
+  }
+  function pedir(msg){ $("chqLogin").hidden = false; $("chqErr").textContent = msg || ""; }
+
+  document.querySelectorAll("#chqSedes button").forEach(b => b.onclick = ()=>{
+    sel = b.dataset.s;
+    document.querySelectorAll("#chqSedes button").forEach(x => x.classList.toggle("on", x === b));
+    $("chqPin").focus();
+  });
+  $("chqSalir").onclick = ()=>{ save("chq_ses", null); location.reload(); };
+  $("chqForm").onsubmit = async e => {
+    e.preventDefault(); $("chqErr").textContent = "";
+    const pin = $("chqPin").value.trim(), por = $("chqNom").value.trim();
+    if(!sel) return void($("chqErr").textContent = "Elige tu sede.");
+    if(!por) return void($("chqErr").textContent = "Escribe tu nombre.");
+    if(!pin) return void($("chqErr").textContent = "Escribe el PIN.");
+    $("chqEntrar").disabled = true; $("chqEntrar").textContent = "Verificando…";
+    try{
+      const s = { sede:sel, pin, por };
+      const j = await llamar(s);
+      if(!j.ok) throw new Error(j.error || "PIN incorrecto.");
+      save("chq_ses", s);
+      $("chqPin").value = "";
+      abrir(s);
+    }catch(err){
+      $("chqErr").textContent = (err instanceof TypeError) ? "No hay conexión para verificar el PIN." : err.message;
+    }
+    $("chqEntrar").disabled = false; $("chqEntrar").textContent = "Entrar";
+  };
+
+  const guardada = load("chq_ses", null);
+  if(guardada && guardada.sede && guardada.pin){
+    abrir(guardada);                      // entra al instante; sin internet también funciona
+    llamar(guardada).then(j => { if(!j.ok){ save("chq_ses", null); location.reload(); } }).catch(()=>{});
+  } else {
+    pedir("");
+  }
+})();
 
 /* ---------- utilidades ---------- */
 const norm = s => String(s||"").trim().toUpperCase().replace(/[\s\-_.]/g,"");
