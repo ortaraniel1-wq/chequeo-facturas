@@ -86,6 +86,10 @@ PUBLICOS = {
     "manifest.json": "manifest.json",
     "icon-192.png": "icon-192.png",
     "icon-512.png": "icon-512.png",
+    "icon-180.png": "icon-180.png",
+    "armor_wordmark.png": "armor_wordmark.png",
+    "escudo.png": "escudo.png",
+    "sw.js": "sw.js",
 }
 
 
