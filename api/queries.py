@@ -31,6 +31,7 @@ SELECT
     RTRIM(r.co_art)             AS codigo,
     RTRIM(a.art_des)            AS descripcion,
     RTRIM(a.ref)                AS referencia,
+    RTRIM(a.modelo)             AS modelo,
     r.total_art                 AS cantidad,
     RTRIM(r.uni_venta)          AS unidad
 FROM reng_fac r
@@ -40,7 +41,8 @@ WHERE r.fact_num = ?
 ORDER BY r.reng_num
 """
 
-# Códigos de barras de los artículos de la factura (un artículo puede tener varios).
+# Códigos de barras ADICIONALES (artbarra). El código principal vive en art.ref / art.modelo
+# (ej. art 21013 -> ref = modelo = 096619381555), que ya vienen en RENGLONES.
 BARRAS = """
 SELECT RTRIM(b.codi) AS codigo, RTRIM(b.barra) AS barra
 FROM artbarra b

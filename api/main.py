@@ -65,5 +65,11 @@ def factura(numero: int):
     for b in barras:
         por_codigo.setdefault(b["codigo"], []).append(b["barra"])
     for r in reng:
-        r["barras"] = por_codigo.get(r["codigo"], [])
+        codigos = [r.get("referencia"), r.get("modelo")] + por_codigo.get(r["codigo"], [])
+        vistos = []
+        for c in codigos:
+            c = (c or "").strip()
+            if c and c not in vistos:
+                vistos.append(c)
+        r["barras"] = vistos
     return {"factura": enc[0], "renglones": reng}
