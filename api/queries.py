@@ -16,10 +16,11 @@ SELECT TOP 1
     f.fact_num          AS numero,
     f.fec_emis          AS fecha,
     RTRIM(f.co_cli)     AS cliente_codigo,
-    RTRIM(f.nombre)     AS cliente_nombre,
+    RTRIM(c.cli_des)    AS cliente_nombre,
     f.status            AS status,
     f.anulada           AS anulada
 FROM factura f
+LEFT JOIN clientes c ON c.co_cli = f.co_cli
 WHERE f.fact_num = ?
 """
 
