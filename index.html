@@ -893,7 +893,7 @@ function pintarResumen(){
   const limpio = !falta.length && !sobra.length && !desc.length;
   $("resTitulo").textContent = limpio ? "Factura conforme" : "Factura con novedades";
   $("resNota").textContent = limpio
-    ? "Los " + rows.length + " renglones llegaron completos. " + (doc ? "Factura " + doc + "." : "")
+    ? (rows.length === 1 ? "El único renglón llegó completo. " : "Los " + rows.length + " renglones llegaron completos. ") + (doc ? "Factura " + doc + "." : "")
     : "Revisa lo que está abajo antes de firmar. " + (doc ? "Factura " + doc + "." : "");
 
   grupo("gFalta",  "Faltantes", falta,  r => (r.qty - r.got) + " de menos");
