@@ -46,7 +46,7 @@ def salud():
 
 
 @app.get("/factura/{numero}", dependencies=[Depends(verificar_token)])
-def factura(numero: str):
+def factura(numero: int):
     try:
         with conectar() as cn:
             cur = cn.cursor()
@@ -56,6 +56,14 @@ def factura(numero: str):
                 raise HTTPException(status_code=404, detail="Factura no encontrada")
             cur.execute(queries.RENGLONES, numero)
             reng = filas(cur)
+            cur.execute(queries.BARRAS, numero)
+            barras = filas(cur)
     except pyodbc.Error:
         raise HTTPException(status_code=502, detail="Error consultando la base de datos")
+
+    por_codigo = {}
+    for b in barras:
+        por_codigo.setdefault(b["codigo"], []).append(b["barra"])
+    for r in reng:
+        r["barras"] = por_codigo.get(r["codigo"], [])
     return {"factura": enc[0], "renglones": reng}

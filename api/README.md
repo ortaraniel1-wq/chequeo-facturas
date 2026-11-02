@@ -12,6 +12,6 @@ Corre en el servidor de Profit. Solo lectura.
 
 ## Probar
     GET /salud
-    GET /factura/12345      (header  X-Token: <API_TOKEN>)
+    GET /factura/12345      (número entero; header  X-Token: <API_TOKEN>)
 
 Ajustar las consultas en `queries.py` al esquema real.
