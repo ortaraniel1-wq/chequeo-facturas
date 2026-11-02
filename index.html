@@ -156,16 +156,32 @@
 <!-- ============ 1. CARGAR ============ -->
 <section id="s1">
   <h2>Cargar la factura</h2>
-  <p class="note">Tómale foto a la factura impresa y la app lee los renglones. Si la lectura sale mal, corriges la tabla a mano antes de empezar.</p>
+  <p class="note">Escribe el número de factura y la app trae los productos desde Profit.</p>
 
   <div class="drop">
-    <div class="row">
-      <button class="btn primary" id="btnFoto">Tomar foto</button>
-      <button class="btn" id="btnArchivo">Elegir imagen</button>
-    </div>
-    <button class="btn ghost" id="btnPdf">Cargar factura en PDF</button>
-    <button class="btn ghost" id="btnTexto">Pegar el texto de la factura</button>
+    <input type="text" id="profitNum" inputmode="numeric" autocomplete="off" placeholder="N° de factura (ej. 40165747)" style="font-family:var(--mono);font-size:1.2rem">
+    <button class="btn go grande" id="btnProfit">Buscar en Profit</button>
+    <div class="status" id="profitMsg"></div>
+    <details style="margin-top:.6rem">
+      <summary class="note">Ajustes de conexión</summary>
+      <input type="text" id="cfgUrl" placeholder="Dirección de la API (vacío si abriste la app desde el servidor)" style="font-family:var(--mono)">
+      <input type="password" id="cfgToken" placeholder="Token de acceso" style="font-family:var(--mono)">
+      <button class="btn ghost sm" id="btnCfg" style="width:100%">Guardar ajustes</button>
+    </details>
   </div>
+
+  <details style="margin:.9rem 0">
+    <summary class="note">Otras formas de cargar: foto, PDF o texto</summary>
+    <p class="note">Tómale foto a la factura impresa y la app lee los renglones. Si la lectura sale mal, corriges la tabla a mano antes de empezar.</p>
+    <div class="drop">
+      <div class="row">
+        <button class="btn primary" id="btnFoto">Tomar foto</button>
+        <button class="btn" id="btnArchivo">Elegir imagen</button>
+      </div>
+      <button class="btn ghost" id="btnPdf">Cargar factura en PDF</button>
+      <button class="btn ghost" id="btnTexto">Pegar el texto de la factura</button>
+    </div>
+  </details>
 
   <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
   <input type="file" id="fileLib" accept="image/*" hidden>
@@ -347,6 +363,49 @@ $("btnFoto").onclick = ()=> $("fileCam").click();
 $("btnArchivo").onclick = ()=> $("fileLib").click();
 $("fileCam").onchange = e => { if(e.target.files[0]) leerImagen(e.target.files[0]); };
 $("fileLib").onchange = e => { if(e.target.files[0]) leerImagen(e.target.files[0]); };
+
+/* --- factura desde Profit (API) --- */
+$("cfgUrl").value = load("api_url", "");
+$("cfgToken").value = load("api_token", "");
+$("btnCfg").onclick = ()=>{
+  save("api_url", $("cfgUrl").value.trim().replace(/\/+$/,""));
+  save("api_token", $("cfgToken").value.trim());
+  $("profitMsg").textContent = "Ajustes guardados.";
+};
+$("profitNum").addEventListener("keydown", e=>{ if(e.key === "Enter"){ e.preventDefault(); $("btnProfit").click(); } });
+
+$("btnProfit").onclick = async ()=>{
+  const num = $("profitNum").value.trim();
+  const msg = $("profitMsg");
+  if(!/^\d+$/.test(num)){ msg.textContent = "Escribe solo el número de factura."; return; }
+  if(rows.length && !confirm("Ya hay una factura cargada. ¿Reemplazarla?")) return;
+  msg.textContent = "Buscando…";
+  $("btnProfit").disabled = true;
+  try{
+    const base = load("api_url", "");
+    const res = await fetch(base + "/factura/" + num, { headers: { "X-Token": load("api_token", "") } });
+    if(res.status === 401) throw new Error("Token incorrecto. Revisa los ajustes de conexión.");
+    if(res.status === 404) throw new Error("No existe la factura " + num + ".");
+    if(!res.ok) throw new Error("El servidor respondió con error (" + res.status + ").");
+    const data = await res.json();
+    const f = data.factura || {};
+    rows = (data.renglones || []).map(r => ({
+      id: uid++, code: r.codigo || "", bar: (r.barras && r.barras[0]) || "", barras: r.barras || [],
+      desc: r.descripcion || "", qty: Math.max(1, Math.round(Number(r.cantidad) || 1)), got: 0
+    }));
+    unknown = {};
+    doc = String(f.numero || num);
+    $("docNum").value = doc;
+    $("docLabel").textContent = doc + (f.cliente_nombre ? " · " + f.cliente_nombre : "");
+    pintarTabla();
+    msg.textContent = f.anulada ? "⚠ Esta factura está ANULADA." :
+      rows.length + " renglones cargados" + (f.cliente_nombre ? " · " + f.cliente_nombre : "") + ".";
+  }catch(e){
+    msg.textContent = (e instanceof TypeError) ? "No se pudo conectar con el servidor." : e.message;
+  }finally{
+    $("btnProfit").disabled = false;
+  }
+};
 
 $("btnPdf").onclick = ()=> $("filePdf").click();
 $("filePdf").onchange = e => { if(e.target.files[0]) leerPDF(e.target.files[0]); };
@@ -599,7 +658,13 @@ $("btnEmpezar").onclick = ()=>{ rows.forEach(r=>r.got=0); unknown={}; ir(2); pin
 function buscarPorCodigo(c){
   const n = norm(c);
   if(!n) return null;
-  let r = rows.find(x=>norm(x.bar)===n) || rows.find(x=>norm(x.code)===n);
+  // El lector puede dar UPC-A (12) o EAN-13 con ceros de más: se comparan sin ceros a la izquierda.
+  const sinCeros = s => norm(s).replace(/^0+/, "");
+  const nb = sinCeros(c);
+  const coincide = rows.filter(x =>
+    (x.barras && x.barras.length ? x.barras : [x.bar]).some(b => b && sinCeros(b) === nb) || norm(x.code) === n);
+  // si el mismo producto está en varios renglones, primero el que aún no está completo
+  let r = coincide.find(x => x.got < x.qty) || coincide[0];
   if(r) return r;
   const id = aliases[n];
   if(id != null){

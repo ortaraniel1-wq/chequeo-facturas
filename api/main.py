@@ -1,10 +1,12 @@
 import os
 import secrets
+from pathlib import Path
 
 import pyodbc
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 import queries
 
@@ -73,3 +75,23 @@ def factura(numero: int):
                 vistos.append(c)
         r["barras"] = vistos
     return {"factura": enc[0], "renglones": reng}
+
+
+# --- La PWA se sirve desde la misma API (mismo origen: sin CORS ni problemas de http/https) ---
+# Solo estos archivos; NO se expone la carpeta del repo (api/.env, .git, etc.).
+RAIZ = Path(__file__).resolve().parent.parent
+PUBLICOS = {
+    "": "index.html",
+    "index.html": "index.html",
+    "manifest.json": "manifest.json",
+    "icon-192.png": "icon-192.png",
+    "icon-512.png": "icon-512.png",
+}
+
+
+@app.get("/{archivo:path}", include_in_schema=False)
+def pwa(archivo: str):
+    nombre = PUBLICOS.get(archivo)
+    if not nombre:
+        raise HTTPException(status_code=404, detail="No encontrado")
+    return FileResponse(RAIZ / nombre)

@@ -1,7 +1,7 @@
 {
   "name": "Chequeo de facturas · Armor Market",
   "short_name": "Chequeo",
-  "start_url": "./chequeo-facturas.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
