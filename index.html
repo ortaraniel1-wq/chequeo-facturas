@@ -156,30 +156,29 @@
 <!-- ============ 1. CARGAR ============ -->
 <section id="s1">
   <h2>Cargar la factura</h2>
-  <p class="note">Escribe el número de factura y la app trae los productos desde Profit.</p>
+  <p class="note">Sube el PDF de la nota de entrega o de la factura (el que imprime Profit) y la app lee los renglones.</p>
 
   <div class="drop">
-    <input type="text" id="profitNum" inputmode="numeric" autocomplete="off" placeholder="N° de factura (ej. 40165747)" style="font-family:var(--mono);font-size:1.2rem">
-    <button class="btn go grande" id="btnProfit">Buscar en Profit</button>
-    <div class="status" id="profitMsg"></div>
-    <details style="margin-top:.6rem">
-      <summary class="note">Ajustes de conexión</summary>
-      <input type="text" id="cfgUrl" placeholder="Dirección de la API (vacío si abriste la app desde el servidor)" style="font-family:var(--mono)">
-      <input type="password" id="cfgToken" placeholder="Token de acceso" style="font-family:var(--mono)">
-      <button class="btn ghost sm" id="btnCfg" style="width:100%">Guardar ajustes</button>
-    </details>
+    <button class="btn go grande" id="btnPdf">Subir PDF</button>
+    <div class="row">
+      <button class="btn" id="btnFoto">Tomar foto</button>
+      <button class="btn" id="btnArchivo">Elegir imagen</button>
+    </div>
+    <button class="btn ghost" id="btnTexto">Pegar el texto de la factura</button>
   </div>
 
   <details style="margin:.9rem 0">
-    <summary class="note">Otras formas de cargar: foto, PDF o texto</summary>
-    <p class="note">Tómale foto a la factura impresa y la app lee los renglones. Si la lectura sale mal, corriges la tabla a mano antes de empezar.</p>
+    <summary class="note">Buscar por número en Profit (requiere la conexión al servidor)</summary>
     <div class="drop">
-      <div class="row">
-        <button class="btn primary" id="btnFoto">Tomar foto</button>
-        <button class="btn" id="btnArchivo">Elegir imagen</button>
-      </div>
-      <button class="btn ghost" id="btnPdf">Cargar factura en PDF</button>
-      <button class="btn ghost" id="btnTexto">Pegar el texto de la factura</button>
+      <input type="text" id="profitNum" inputmode="numeric" autocomplete="off" placeholder="N° de factura (ej. 40165747)" style="font-family:var(--mono);font-size:1.2rem">
+      <button class="btn" id="btnProfit">Buscar en Profit</button>
+      <div class="status" id="profitMsg"></div>
+      <details style="margin-top:.6rem">
+        <summary class="note">Ajustes de conexión</summary>
+        <input type="text" id="cfgUrl" placeholder="Dirección de la API (vacío si abriste la app desde el servidor)" style="font-family:var(--mono)">
+        <input type="password" id="cfgToken" placeholder="Token de acceso" style="font-family:var(--mono)">
+        <button class="btn ghost sm" id="btnCfg" style="width:100%">Guardar ajustes</button>
+      </details>
     </div>
   </details>
 
@@ -585,7 +584,41 @@ function prepararImagen(file){
    Espera algo así:  A0012  ARROZ PRIMOR 1KG  12,00  1.500,00  18.000,00
    Toma el primer token como código, el último bloque de números como precios
    y la primera cifra de ese bloque como la cantidad.                       */
+/* Formato de Profit (nota de entrega / factura impresa a PDF):
+     CODIGO  DESCRIPCION  UND  [GRTIA]  CANTD  ALM  PRECIO  [%DESC]  NETO
+   La descripción puede seguir en la línea de abajo y cada página repite el encabezado. */
+function parsearProfit(texto){
+  const out = [];
+  const reRenglon = /^(\S+)\s+(.+?)\s+(\S{2,6})(?:\s+\d+(?:[.,]\d+)?)?\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z0-9]{2,8})\s+[\d.,]+(?:\s+[\d.,]+)?\s+[\d.,]+$/;
+  const reSalta = /^(nota\s+de\s+(entrega|despacho)|factura\b|cliente|r\.?\s?i\.?\s?f|n\.?\s?i\.?\s?t|direcci|tel[eé]fonos|fecha|condici|vendedor|codigo\s+descripci|sub-?\s*total|descuento|total\b|son:|p[aá]gina|p[aá]g\b)/i;
+  let ultima = null;
+  const mDoc = String(texto).match(/(?:nota\s+de\s+(?:entrega|despacho)|factura)\s*(?:no\.?|n[º°o]\.?)?\s*:?\s*(\d{4,})/i);
+
+  String(texto).split(/\r?\n/).forEach(linea=>{
+    const l = limpiar(linea);
+    if(!l) return;
+    const m = l.match(reRenglon);
+    if(m){
+      ultima = { id: uid++, code: m[1], bar: "", desc: m[2], qty: Math.max(1, Math.round(numVe(m[4]) || 1)), got: 0 };
+      out.push(ultima);
+    } else if(reSalta.test(l)){
+      ultima = null;
+    } else if(ultima){
+      ultima.desc = limpiar(ultima.desc + " " + l);   // segunda línea de la descripción
+    }
+  });
+
+  if(out.length && mDoc){
+    doc = mDoc[1];
+    $("docNum").value = doc;
+    $("docLabel").textContent = doc;
+  }
+  return out;
+}
+
 function parsear(texto){
+  const pf = parsearProfit(texto);
+  if(pf.length) return pf;
   const out = [];
   String(texto).split(/\r?\n/).forEach(linea=>{
     let l = limpiar(linea);
