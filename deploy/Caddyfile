@@ -1,0 +1,10 @@
+# /etc/caddy/Caddyfile en el VPS. Cambiar api.TUDOMINIO.com por tu subdominio.
+api.TUDOMINIO.com {
+	@permitidas path /salud /factura/*
+	handle @permitidas {
+		reverse_proxy 10.8.0.2:8000
+	}
+	handle {
+		respond "No encontrado" 404
+	}
+}
