@@ -169,8 +169,10 @@
 
   <details style="margin:.9rem 0">
     <summary class="note" id="catResumen">Catálogo de códigos de barras: no cargado</summary>
-    <p class="note">Archivo con una línea por código de barras, en el formato <code>codigo,barra</code>. Se carga una sola vez y queda guardado en este teléfono. Así se reconocen los productos al escanear el empaque.</p>
-    <button class="btn" id="btnCatalogo">Cargar catálogo (CSV)</button>
+    <p class="note">La app baja sola, una vez al día, la lista de productos con sus códigos de barras de las tres sedes (Chaguaramos, Boleita y La Guaira). También puedes actualizarla ahora.</p>
+    <button class="btn" id="btnCatAct">Actualizar catálogo ahora</button>
+    <div class="status" id="catMsg"></div>
+    <button class="btn ghost sm" id="btnCatalogo" style="width:100%;margin-top:.5rem">Cargar un archivo CSV (codigo,barra)</button>
     <input type="file" id="fileCat" accept=".csv,.txt,text/csv,text/plain" hidden>
   </details>
 
@@ -435,12 +437,64 @@ $("btnProfit").onclick = async ()=>{
   }
 };
 
-/* --- catálogo de códigos de barras (CSV: codigo,barra) --- */
+/* --- catálogo de códigos de barras --- */
+const CAT_BASE = "https://raw.githubusercontent.com/ortaraniel1-wq/armor-catalogo-datos/main/";
+const CAT_ARCHIVOS = ["conteo_CHAG.json", "conteo_BOLEITA.json", "conteo_GUAIRA.json"];
+const normCodigo = s => String(s == null ? "" : s).trim().toUpperCase().replace(/[\s\-_.]/g, "");
+
 function pintarCatResumen(){
   $("catResumen").textContent = catalogo
-    ? "Catálogo de códigos de barras: " + catalogo.n + " códigos (" + catalogo.fecha + ")"
+    ? "Catálogo de códigos de barras: " + catalogo.n + " códigos · " + (catalogo.detalle || catalogo.fecha)
     : "Catálogo de códigos de barras: no cargado";
 }
+function guardarCatalogo(porBarra, detalle){
+  const c = { ts: Date.now(), fecha: new Date().toLocaleString("es-VE"), n: Object.keys(porBarra).length, porBarra: porBarra, detalle: detalle };
+  let guardado = true;
+  try{ localStorage.setItem("catalogo", JSON.stringify(c)); }catch(err){ guardado = false; }
+  catalogo = prepararCatalogo(c);
+  pintarCatResumen();
+  if(rows.length) pintarChequeo();
+  return guardado;
+}
+
+async function actualizarCatalogo(silencioso){
+  const msg = $("catMsg"), btn = $("btnCatAct");
+  btn.disabled = true;
+  const porBarra = {};
+  let ultima = "";
+  try{
+    for(const nombre of CAT_ARCHIVOS){
+      msg.textContent = "Bajando " + nombre + "…";
+      const res = await fetch(CAT_BASE + nombre);
+      if(!res.ok) throw new Error(nombre + " respondió " + res.status);
+      const d = await res.json();
+      const ix = {}; (d.cols || []).forEach((c, i) => ix[c] = i);
+      if(ix.codigo == null || ix.barra == null) throw new Error(nombre + " no tiene las columnas esperadas");
+      (d.items || []).forEach(it => {
+        const cod = normCodigo(it[ix.codigo]);
+        if(!cod) return;
+        [["barra", false], ["ref", true]].forEach(([campo, soloNumerico]) => {
+          if(ix[campo] == null) return;
+          const v = String(it[ix[campo]] == null ? "" : it[ix[campo]]).trim();
+          if(!v || !/\d/.test(v)) return;
+          if(soloNumerico && !/^\d{6,}$/.test(v)) return;   // 'ref' solo vale si parece un código de barras
+          porBarra[sinCerosG(v)] = [cod, v];
+        });
+      });
+      if(d.actualizado) ultima = d.actualizado;
+    }
+    const ok = guardarCatalogo(porBarra, "actualizado " + (ultima || new Date().toLocaleDateString("es-VE")));
+    msg.textContent = ok ? "Catálogo al día." : "Catálogo cargado, pero es muy grande para guardarlo en este teléfono: se perderá al cerrar la app.";
+  }catch(e){
+    msg.textContent = (silencioso ? "No se pudo actualizar el catálogo solo (" : "No se pudo actualizar (") + e.message + ")." +
+      (catalogo ? " Se sigue usando el que ya estaba guardado." : "");
+  }finally{
+    btn.disabled = false;
+  }
+}
+$("btnCatAct").onclick = ()=> actualizarCatalogo(false);
+
+/* --- catálogo desde un archivo CSV (codigo,barra), por si no hay conexión --- */
 $("btnCatalogo").onclick = ()=> $("fileCat").click();
 $("fileCat").onchange = async e => {
   const f = e.target.files[0];
@@ -451,18 +505,15 @@ $("fileCat").onchange = async e => {
     if(t.length < 2 || !t[0] || !t[1]) return;
     const k = sinCerosG(t[1]);
     if(!k || !/\d/.test(k)) return;              // salta la fila de encabezado
-    porBarra[k] = [t[0].toUpperCase().replace(/[\s\-_.]/g,""), t[1]]; n++;
+    porBarra[k] = [normCodigo(t[0]), t[1]]; n++;
   });
   if(!n){ alert("No se reconoció ningún código. Cada línea debe ser: codigo,barra"); return; }
-  const c = { fecha: new Date().toLocaleDateString("es-VE"), n: n, porBarra: porBarra };
-  try{ localStorage.setItem("catalogo", JSON.stringify(c)); }
-  catch(err){ alert("El catálogo es muy grande para guardarlo en este teléfono. Se usará solo hasta que cierres la app."); }
-  catalogo = prepararCatalogo(c);
-  pintarCatResumen();
-  if(rows.length) pintarChequeo();
+  guardarCatalogo(porBarra, "archivo cargado " + new Date().toLocaleDateString("es-VE"));
   e.target.value = "";
 };
 pintarCatResumen();
+// una vez al día, o si todavía no hay catálogo, se baja solo
+if(!catalogo || Date.now() - (catalogo.ts || 0) > 24*3600*1000) actualizarCatalogo(true);
 
 $("btnPdf").onclick = ()=> $("filePdf").click();
 $("filePdf").onchange = e => { if(e.target.files[0]) leerPDF(e.target.files[0]); };
