@@ -6,7 +6,7 @@ Celular (PWA) --HTTPS--> VPS (Caddy) --WireGuard--> Servidor Profit (API :8000)
 El servidor de Profit inicia el túnel hacia el VPS, así que no se abre ningún puerto en la tienda.
 
 ## 0. DNS
-Crear un registro **A**: `api.TUDOMINIO.com` -> IP pública del VPS.
+Crear un registro **A**: `api.hiperarmormarket.com` -> IP pública del VPS.
 
 ## 1. VPS (Ubuntu)
 ```bash
@@ -36,7 +36,7 @@ sudo systemctl reload caddy
 
 ## 3. Probar
 - Desde el VPS: `curl http://10.8.0.2:8000/salud`
-- Desde cualquier lado: `curl https://api.TUDOMINIO.com/salud`
-- `curl -H "X-Token: TU_TOKEN" https://api.TUDOMINIO.com/factura/12345`
+- Desde cualquier lado: `curl https://api.hiperarmormarket.com/salud`
+- `curl -H "X-Token: TU_TOKEN" https://api.hiperarmormarket.com/factura/12345`
 
 En `api/.env`, poner `CORS_ORIGINS` con el origen de la PWA.
