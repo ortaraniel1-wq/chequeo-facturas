@@ -168,6 +168,13 @@
   </div>
 
   <details style="margin:.9rem 0">
+    <summary class="note" id="catResumen">Catálogo de códigos de barras: no cargado</summary>
+    <p class="note">Archivo con una línea por código de barras, en el formato <code>codigo,barra</code>. Se carga una sola vez y queda guardado en este teléfono. Así se reconocen los productos al escanear el empaque.</p>
+    <button class="btn" id="btnCatalogo">Cargar catálogo (CSV)</button>
+    <input type="file" id="fileCat" accept=".csv,.txt,text/csv,text/plain" hidden>
+  </details>
+
+  <details style="margin:.9rem 0">
     <summary class="note">Buscar por número en Profit (requiere la conexión al servidor)</summary>
     <div class="drop">
       <input type="text" id="profitNum" inputmode="numeric" autocomplete="off" placeholder="N° de factura (ej. 40165747)" style="font-family:var(--mono);font-size:1.2rem">
@@ -311,6 +318,22 @@ let unknown = {};       // codigo -> veces
 let aliases = load("alias_codigos", {});   // codigo escaneado -> id de renglón (por código de factura)
 let uid = 1;
 
+/* ---------- catálogo de códigos de barras (código interno de Profit <-> barra) ---------- */
+const sinCerosG = s => String(s||"").trim().toUpperCase().replace(/[\s\-_.]/g,"").replace(/^0+/, "");
+let catalogo = prepararCatalogo(load("catalogo", null));
+function prepararCatalogo(c){
+  if(!c || !c.porBarra) return null;
+  c.rev = {};
+  for(const k in c.porBarra){ const v = c.porBarra[k]; (c.rev[v[0]] = c.rev[v[0]] || []).push(v[1]); }
+  return c;
+}
+// todos los códigos de barras conocidos de un renglón: los de la factura (API) + los del catálogo
+function barrasDe(r){
+  const out = (r.barras && r.barras.length ? r.barras : [r.bar]).filter(Boolean);
+  if(catalogo) (catalogo.rev[String(r.code||"").trim().toUpperCase().replace(/[\s\-_.]/g,"")] || []).forEach(b=>out.push(b));
+  return out;
+}
+
 function load(k, def){ try{ return JSON.parse(localStorage.getItem(k)) ?? def; }catch(e){ return def; } }
 function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function guardarSesion(){ save("sesion", {doc, rows, unknown, uid}); }
@@ -411,6 +434,35 @@ $("btnProfit").onclick = async ()=>{
     $("btnProfit").disabled = false;
   }
 };
+
+/* --- catálogo de códigos de barras (CSV: codigo,barra) --- */
+function pintarCatResumen(){
+  $("catResumen").textContent = catalogo
+    ? "Catálogo de códigos de barras: " + catalogo.n + " códigos (" + catalogo.fecha + ")"
+    : "Catálogo de códigos de barras: no cargado";
+}
+$("btnCatalogo").onclick = ()=> $("fileCat").click();
+$("fileCat").onchange = async e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  const porBarra = {}; let n = 0;
+  (await f.text()).split(/\r?\n/).forEach(l=>{
+    const t = l.split(/[;,\t]/).map(x=>x.trim());
+    if(t.length < 2 || !t[0] || !t[1]) return;
+    const k = sinCerosG(t[1]);
+    if(!k || !/\d/.test(k)) return;              // salta la fila de encabezado
+    porBarra[k] = [t[0].toUpperCase().replace(/[\s\-_.]/g,""), t[1]]; n++;
+  });
+  if(!n){ alert("No se reconoció ningún código. Cada línea debe ser: codigo,barra"); return; }
+  const c = { fecha: new Date().toLocaleDateString("es-VE"), n: n, porBarra: porBarra };
+  try{ localStorage.setItem("catalogo", JSON.stringify(c)); }
+  catch(err){ alert("El catálogo es muy grande para guardarlo en este teléfono. Se usará solo hasta que cierres la app."); }
+  catalogo = prepararCatalogo(c);
+  pintarCatResumen();
+  if(rows.length) pintarChequeo();
+  e.target.value = "";
+};
+pintarCatResumen();
 
 $("btnPdf").onclick = ()=> $("filePdf").click();
 $("filePdf").onchange = e => { if(e.target.files[0]) leerPDF(e.target.files[0]); };
@@ -701,7 +753,7 @@ function buscarPorCodigo(c){
   const sinCeros = s => norm(s).replace(/^0+/, "");
   const nb = sinCeros(c);
   const coincide = rows.filter(x =>
-    (x.barras && x.barras.length ? x.barras : [x.bar]).some(b => b && sinCeros(b) === nb) || norm(x.code) === n);
+    barrasDe(x).some(b => sinCeros(b) === nb) || norm(x.code) === n);
   // si el mismo producto está en varios renglones, primero el que aún no está completo
   let r = coincide.find(x => x.got < x.qty) || coincide[0];
   if(r) return r;
@@ -787,14 +839,14 @@ function pintarChequeo(){
   ul.innerHTML = "";
   rows
     .filter(r=>!q || norm(r.desc).includes(q) || norm(r.code).includes(q) ||
-      (r.barras && r.barras.length ? r.barras : [r.bar]).some(b=>b && norm(b).includes(q)))
+      barrasDe(r).some(b => norm(b).includes(q)))
     .sort((a,b)=>(a.got>=a.qty) - (b.got>=b.qty))
     .forEach(r=>{
       const li = document.createElement("li");
       if(r.got > r.qty) li.className = "over";
       else if(r.got >= r.qty) li.className = "done";
       li.innerHTML =
-        '<div class="desc"><b>'+esc(r.desc||"(sin descripción)")+'</b><small>'+esc(r.code)+(r.bar ? ' · '+esc(r.bar) : '')+'</small></div>'+
+        '<div class="desc"><b>'+esc(r.desc||"(sin descripción)")+'</b><small>'+esc(r.code)+(barrasDe(r)[0] ? ' · '+esc(barrasDe(r)[0]) : '')+'</small></div>'+
         '<span class="n '+(r.got>r.qty?"over":r.got>=r.qty?"full":"")+'">'+r.got+'/'+r.qty+'</span>';
       const contar = document.createElement("button");
       contar.className = "btn sm"; contar.textContent = "Contar";
