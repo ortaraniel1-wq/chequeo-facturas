@@ -369,7 +369,7 @@ $("cfgUrl").value = load("api_url", "");
 $("cfgToken").value = load("api_token", "");
 $("btnCfg").onclick = ()=>{
   save("api_url", $("cfgUrl").value.trim().replace(/\/+$/,""));
-  save("api_token", $("cfgToken").value.trim());
+  save("api_token", $("cfgToken").value.replace(/[^\x21-\x7E]/g, ""));
   $("profitMsg").textContent = "Ajustes guardados.";
 };
 $("profitNum").addEventListener("keydown", e=>{ if(e.key === "Enter"){ e.preventDefault(); $("btnProfit").click(); } });
@@ -383,7 +383,7 @@ $("btnProfit").onclick = async ()=>{
   $("btnProfit").disabled = true;
   try{
     const base = load("api_url", "");
-    const res = await fetch(base + "/factura/" + num, { headers: { "X-Token": load("api_token", "") } });
+    const res = await fetch(base + "/factura/" + num, { headers: { "X-Token": String(load("api_token", "")).replace(/[^\x21-\x7E]/g, "") } });
     if(res.status === 401) throw new Error("Token incorrecto. Revisa los ajustes de conexión.");
     if(res.status === 404){
       let det = ""; try{ det = (await res.json()).detail || ""; }catch(e){}
@@ -407,7 +407,7 @@ $("btnProfit").onclick = async ()=>{
       rows.length + (rows.length === 1 ? " renglón cargado" : " renglones cargados") +
       (f.cliente_nombre ? " · " + f.cliente_nombre : "") + ".";
   }catch(e){
-    msg.textContent = (e instanceof TypeError) ? "No se pudo conectar con el servidor." : e.message;
+    msg.textContent = (e instanceof TypeError) ? "No se pudo conectar con el servidor (" + e.message + ")." : e.message;
   }finally{
     $("btnProfit").disabled = false;
   }
