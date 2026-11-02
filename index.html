@@ -753,14 +753,15 @@ function pintarChequeo(){
   const ul = $("lista");
   ul.innerHTML = "";
   rows
-    .filter(r=>!q || norm(r.desc).includes(q) || norm(r.code).includes(q))
+    .filter(r=>!q || norm(r.desc).includes(q) || norm(r.code).includes(q) ||
+      (r.barras && r.barras.length ? r.barras : [r.bar]).some(b=>b && norm(b).includes(q)))
     .sort((a,b)=>(a.got>=a.qty) - (b.got>=b.qty))
     .forEach(r=>{
       const li = document.createElement("li");
       if(r.got > r.qty) li.className = "over";
       else if(r.got >= r.qty) li.className = "done";
       li.innerHTML =
-        '<div class="desc"><b>'+esc(r.desc||"(sin descripción)")+'</b><small>'+esc(r.code)+'</small></div>'+
+        '<div class="desc"><b>'+esc(r.desc||"(sin descripción)")+'</b><small>'+esc(r.code)+(r.bar ? ' · '+esc(r.bar) : '')+'</small></div>'+
         '<span class="n '+(r.got>r.qty?"over":r.got>=r.qty?"full":"")+'">'+r.got+'/'+r.qty+'</span>';
       const contar = document.createElement("button");
       contar.className = "btn sm"; contar.textContent = "Contar";
@@ -771,6 +772,17 @@ function pintarChequeo(){
   if(!ul.children.length) ul.innerHTML = '<li class="empty">Ningún renglón coincide con la búsqueda.</li>';
 }
 $("buscar").oninput = pintarChequeo;
+// Enter en el buscador: si lo escrito es un código de barras o interno exacto, cuenta ese producto
+$("buscar").addEventListener("keydown", e=>{
+  if(e.key !== "Enter") return;
+  const v = $("buscar").value.trim();
+  if(v && buscarPorCodigo(v)){
+    e.preventDefault();
+    $("buscar").value = "";
+    escanear(v);
+    pintarChequeo();
+  }
+});
 
 // Los renglones sin código de barra se cuentan con un id interno
 const escanearOrig = escanear;
