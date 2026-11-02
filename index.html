@@ -70,7 +70,7 @@
     border:2px dashed var(--edge);border-radius:8px;padding:1.2rem;text-align:center;
     color:var(--dim);margin-bottom:.9rem;
   }
-  textarea,input[type=text],input[type=number],input[type=search]{
+  textarea,input[type=text],input[type=number],input[type=search],input[type=password]{
     width:100%;background:var(--panel);color:var(--paper);border:1px solid var(--edge);
     border-radius:6px;padding:.6rem;font-family:var(--mono);font-size:.95rem;
   }
@@ -385,7 +385,12 @@ $("btnProfit").onclick = async ()=>{
     const base = load("api_url", "");
     const res = await fetch(base + "/factura/" + num, { headers: { "X-Token": load("api_token", "") } });
     if(res.status === 401) throw new Error("Token incorrecto. Revisa los ajustes de conexión.");
-    if(res.status === 404) throw new Error("No existe la factura " + num + ".");
+    if(res.status === 404){
+      let det = ""; try{ det = (await res.json()).detail || ""; }catch(e){}
+      throw new Error(det === "Factura no encontrada"
+        ? "No existe la factura " + num + "."
+        : "No se encontró la API. Revisa que \"Dirección de la API\" en los ajustes esté vacía o sea correcta.");
+    }
     if(!res.ok) throw new Error("El servidor respondió con error (" + res.status + ").");
     const data = await res.json();
     const f = data.factura || {};
@@ -399,7 +404,8 @@ $("btnProfit").onclick = async ()=>{
     $("docLabel").textContent = doc + (f.cliente_nombre ? " · " + f.cliente_nombre : "");
     pintarTabla();
     msg.textContent = f.anulada ? "⚠ Esta factura está ANULADA." :
-      rows.length + " renglones cargados" + (f.cliente_nombre ? " · " + f.cliente_nombre : "") + ".";
+      rows.length + (rows.length === 1 ? " renglón cargado" : " renglones cargados") +
+      (f.cliente_nombre ? " · " + f.cliente_nombre : "") + ".";
   }catch(e){
     msg.textContent = (e instanceof TypeError) ? "No se pudo conectar con el servidor." : e.message;
   }finally{
